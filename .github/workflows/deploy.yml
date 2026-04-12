@@ -39,6 +39,6 @@ jobs:
       - name: Deploy to GitHub Pages 🚀
         uses: JamesIves/github-pages-deploy-action@v4
         with:
-          folder: artifacts/card-designer/dist
+          folder: artifacts/card-designer/dist/public
           branch: gh-pages
           clean: true
