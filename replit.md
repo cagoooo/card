@@ -16,6 +16,17 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
 
+## Artifacts
+
+### 卡牌工坊 (Card Designer) — `/`
+A pure-frontend React + Vite app for designing custom tabletop game components.
+
+- **Home** (`/`): Landing page with links to both design tools
+- **Board Designer** (`/board`): Monopoly-style 40-square board editor — click any square to edit its name and color; supports PDF print via `window.print()`
+- **Card Designer** (`/cards`): Playing card deck editor — manage up to 4 custom suits (name + symbol) and 13 cards each (value + description); supports PDF print with poker-card-sized layout
+- **No backend**: All state is in-memory React state; no API calls or database
+- **Print support**: `@media print` CSS hides UI and formats board/cards for A4/Letter paper
+
 ## Key Commands
 
 - `pnpm run typecheck` — full typecheck across all packages

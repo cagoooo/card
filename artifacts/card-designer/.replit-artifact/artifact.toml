@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "卡牌設計網站"
+version = "1.0.0"
+id = "artifacts/card-designer"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24921
+
+[services.development]
+run = "pnpm --filter @workspace/card-designer run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/card-designer", "run", "build" ]
+publicDir = "artifacts/card-designer/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24921"
+BASE_PATH = "/"
