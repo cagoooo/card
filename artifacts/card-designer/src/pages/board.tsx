@@ -62,11 +62,15 @@ export default function BoardDesigner() {
     }
   };
 
-  // Extract layout groups
-  const bottomRow = [...squares.slice(0, 11)].reverse();
-  const leftCol = [...squares.slice(31, 40)].reverse();
-  const topRow = squares.slice(10, 21);
-  const rightCol = squares.slice(11, 20);
+  // Standard Monopoly board layout (clockwise from GO at bottom-left):
+  // Bottom row:  0(GO) → 10(Jail)     left to right
+  // Right col:   11 → 19              bottom to top (display top to bottom reversed)
+  // Top row:     20(FreePark) → 30(GoJail)  right to left (display left to right reversed)
+  // Left col:    31 → 39              top to bottom
+  const bottomRow = squares.slice(0, 11); // [0..10], left=0(GO), right=10(Jail)
+  const rightCol = [...squares.slice(11, 20)].reverse(); // [19..11], top to bottom
+  const topRow = [...squares.slice(20, 31)].reverse(); // [30..20], left=30(GoJail), right=20(FreePark)
+  const leftCol = squares.slice(31, 40); // [31..39], top to bottom
 
   const SquareComponent = ({ sq, className = "" }: { sq: Square; className?: string }) => (
     <Popover>
@@ -178,15 +182,15 @@ export default function BoardDesigner() {
               ))}
             </div>
 
-            {/* Bottom Row (Go to Jail) */}
+            {/* Bottom Row: GO(0) → Jail(10), left to right */}
             <div className="col-span-3 flex border-t-2 border-black">
-              <SquareComponent sq={bottomRow[10]} className="w-[12%] shrink-0 border-r-2 border-black border-l-0 border-y-0" />
+              <SquareComponent sq={bottomRow[0]} className="w-[12%] shrink-0 border-r-2 border-black border-l-0 border-y-0" />
               <div className="flex-1 flex">
                 {bottomRow.slice(1, 10).map(sq => (
                   <SquareComponent key={sq.id} sq={sq} className="flex-1 border-r border-black border-y-0" />
                 ))}
               </div>
-              <SquareComponent sq={bottomRow[0]} className="w-[12%] shrink-0 border-l-2 border-black border-r-0 border-y-0" />
+              <SquareComponent sq={bottomRow[10]} className="w-[12%] shrink-0 border-l-2 border-black border-r-0 border-y-0" />
             </div>
 
           </div>
