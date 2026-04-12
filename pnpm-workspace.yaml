@@ -33,6 +33,12 @@ minimumReleaseAgeExclude:
   # this setting guards against does not apply to our own packages.
   - '@replit/*'
   - stripe-replit-sync
+  # Trusted, widely-used open-source packages added for card-designer features
+  - '@dnd-kit/core'
+  - '@dnd-kit/sortable'
+  - '@dnd-kit/utilities'
+  - browser-image-compression
+  - idb-keyval
 
 packages:
   - artifacts/*

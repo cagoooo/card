@@ -6,6 +6,8 @@ import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import BoardDesigner from "@/pages/board";
 import CardDesigner from "@/pages/cards";
+import CardBackDesigner from "@/pages/card-back";
+import Projects from "@/pages/projects";
 import { Layout } from "@/components/layout";
 
 const queryClient = new QueryClient();
@@ -14,9 +16,11 @@ function Router() {
   return (
     <Layout>
       <Switch>
-        <Route path="/" component={Home} />
-        <Route path="/board" component={BoardDesigner} />
-        <Route path="/cards" component={CardDesigner} />
+        <Route path="/"           component={Home} />
+        <Route path="/board"      component={BoardDesigner} />
+        <Route path="/cards"      component={CardDesigner} />
+        <Route path="/cards/back" component={CardBackDesigner} />
+        <Route path="/projects"   component={Projects} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

@@ -194,15 +194,22 @@
     padding: 8mm;
     margin: 0 auto;
   }
-  /* Fixed poker card size: 63mm x 88mm (standard poker size) */
+  /* Dynamic card size via CSS custom properties (set by cards.tsx useEffect) */
   .print-card {
-    width: 63mm !important;
-    height: 88mm !important;
+    width: var(--card-print-width, 63mm) !important;
+    height: var(--card-print-height, 88mm) !important;
     page-break-inside: avoid;
     break-inside: avoid;
     flex-shrink: 0;
     flex-grow: 0;
     aspect-ratio: auto !important;
+  }
+  /* Card back same size */
+  .print-card-back {
+    width: var(--card-print-width, 63mm) !important;
+    height: var(--card-print-height, 88mm) !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
   .print-grid {
     display: flex !important;

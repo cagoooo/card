@@ -1,240 +1,499 @@
-import { useState } from "react";
-import { Printer, Plus, Trash2 } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Printer, Plus, Trash2, Download, Upload, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import imageCompression from "browser-image-compression";
+import { useLocalStorage } from "@/hooks/use-local-storage";
+import { CARD_TEMPLATES } from "@/lib/card-templates";
 
-type Card = {
+// ─── Types ────────────────────────────────────────────────────────────────────
+export type Card = {
   id: string;
   value: string;
   description: string;
+  imageBase64?: string;
 };
 
-type Suit = {
+export type Suit = {
   id: string;
   name: string;
   symbol: string;
   cards: Card[];
 };
 
+const PRINT_SIZES = {
+  poker:  { width: "63mm",  height: "88mm",  label: "撲克牌 63×88mm" },
+  bridge: { width: "57mm",  height: "89mm",  label: "橋牌 57×89mm" },
+  tarot:  { width: "70mm",  height: "121mm", label: "塔羅牌 70×121mm" },
+} as const;
+type PrintSize = keyof typeof PRINT_SIZES;
+
+// ─── Card visual themes ───────────────────────────────────────────────────────
+const CARD_THEMES = {
+  classic:  { name: "📝 經典白",    bg: "#ffffff", border: "#e5e7eb", borderWidth: "1px", text: "#111827", accent: "#374151", radius: "0.75rem" },
+  fantasy:  { name: "⚔️ 奇幻羊皮", bg: "linear-gradient(135deg,#fdf6e3,#f5deb3)", border: "#92400e", borderWidth: "2px", text: "#3b1a08", accent: "#92400e", radius: "0.5rem" },
+  scifi:    { name: "🚀 科幻霓虹",  bg: "linear-gradient(135deg,#0d1117,#0d2137)", border: "#22d3ee", borderWidth: "2px", text: "#e0f2fe", accent: "#22d3ee", radius: "0.25rem" },
+  chinese:  { name: "🀄 水墨風",    bg: "#f9f4ea", border: "#292524", borderWidth: "2px", text: "#1c1917", accent: "#7c2d12", radius: "0" },
+  wood:     { name: "🌲 木板質感",  bg: "linear-gradient(135deg,#a0522d,#8B6914)", border: "#451a03", borderWidth: "2px", text: "#fef3c7", accent: "#fde68a", radius: "0.5rem" },
+} as const;
+type CardTheme = keyof typeof CARD_THEMES;
+
+// ─── Default data ─────────────────────────────────────────────────────────────
+function genCards(values: string[]): Card[] {
+  return values.map((v) => ({ id: Math.random().toString(36).slice(2), value: v, description: "" }));
+}
+const STD = ["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
+
 const DEFAULT_SUITS: Suit[] = [
-  { id: "s1", name: "黑桃", symbol: "♠", cards: generateStandardCards() },
-  { id: "s2", name: "紅心", symbol: "♥", cards: generateStandardCards() },
-  { id: "s3", name: "方塊", symbol: "♦", cards: generateStandardCards() },
-  { id: "s4", name: "梅花", symbol: "♣", cards: generateStandardCards() },
+  { id: "ds1", name: "黑桃", symbol: "♠", cards: genCards(STD) },
+  { id: "ds2", name: "紅心", symbol: "♥", cards: genCards(STD) },
+  { id: "ds3", name: "方塊", symbol: "♦", cards: genCards(STD) },
+  { id: "ds4", name: "梅花", symbol: "♣", cards: genCards(STD) },
 ];
 
-function generateStandardCards(): Card[] {
-  const values = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
-  return values.map(v => ({ id: Math.random().toString(), value: v, description: "" }));
-}
+function isRedSuit(symbol: string) { return ["♥","♦","❤️","🔴"].includes(symbol); }
 
-function isRedSuit(symbol: string) {
-  return symbol === "♥" || symbol === "♦";
-}
-
-type CardPreviewProps = {
-  card: Card;
-  suit: Suit;
-  onEdit?: () => void;
-  editable?: boolean;
-};
-
-function CardPreview({ card, suit, editable = true }: CardPreviewProps) {
-  const red = isRedSuit(suit.symbol);
-  const colorClass = red ? "text-red-500" : "text-black";
+// ─── Sortable suit item ───────────────────────────────────────────────────────
+function SortableSuit({
+  suit, isActive, onSelect, onUpdate, onDelete, canDelete,
+}: {
+  suit: Suit; isActive: boolean;
+  onSelect: () => void;
+  onUpdate: (change: Partial<Suit>) => void;
+  onDelete: () => void;
+  canDelete: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: suit.id });
+  const style: React.CSSProperties = { transform: CSS.Transform.toString(transform), transition };
 
   return (
     <div
-      data-testid={`card-${card.id}`}
-      className="print-card aspect-[2.5/3.5] bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-xl transition-all relative overflow-hidden group print:rounded-none print:border-gray-400"
-      style={{ cursor: editable ? "pointer" : "default" }}
+      ref={setNodeRef} style={style} {...attributes}
+      className={`p-3 rounded-xl border-2 transition-all cursor-pointer ${
+        isActive ? "border-primary bg-primary/5" : "border-transparent hover:border-border bg-muted/50"
+      }`}
+      onClick={onSelect}
     >
-      {/* Crop marks for printing */}
-      <div className="hidden print:block absolute top-0 left-0 w-2 h-2 border-t border-l border-gray-400"></div>
-      <div className="hidden print:block absolute top-0 right-0 w-2 h-2 border-t border-r border-gray-400"></div>
-      <div className="hidden print:block absolute bottom-0 left-0 w-2 h-2 border-b border-l border-gray-400"></div>
-      <div className="hidden print:block absolute bottom-0 right-0 w-2 h-2 border-b border-r border-gray-400"></div>
-
-      <div className={`absolute top-3 left-3 flex flex-col items-center ${colorClass}`}>
-        <span className="text-xl font-bold font-serif leading-none">{card.value}</span>
-        <span className="text-lg leading-none mt-1">{suit.symbol}</span>
-      </div>
-
-      <div className={`absolute bottom-3 right-3 flex flex-col items-center rotate-180 ${colorClass}`}>
-        <span className="text-xl font-bold font-serif leading-none">{card.value}</span>
-        <span className="text-lg leading-none mt-1">{suit.symbol}</span>
-      </div>
-
-      <div className="absolute inset-0 flex items-center justify-center p-8 text-center flex-col">
-        {!card.description && (
-          <div className={`text-6xl opacity-20 ${colorClass}`}>
-            {suit.symbol}
-          </div>
+      <div className="flex items-center gap-2 mb-2">
+        <div {...listeners} className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground" onClick={(e) => e.stopPropagation()}>
+          <GripVertical className="w-4 h-4" />
+        </div>
+        <Input
+          value={suit.symbol}
+          maxLength={2}
+          className="w-12 text-center font-bold text-lg p-1 h-8"
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => onUpdate({ symbol: e.target.value })}
+        />
+        <Input
+          value={suit.name}
+          className="flex-1 h-8 text-sm"
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => onUpdate({ name: e.target.value })}
+        />
+        {canDelete && (
+          <Button
+            variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </Button>
         )}
-        {card.description && (
-          <p className="text-sm font-medium leading-relaxed whitespace-pre-wrap">{card.description}</p>
-        )}
       </div>
-
-      {editable && (
-        <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity no-print"></div>
-      )}
+      <p className="text-xs text-muted-foreground pl-6">{suit.cards.length} 張卡牌</p>
     </div>
   );
 }
 
-export default function CardDesigner() {
-  const [suits, setSuits] = useState<Suit[]>(DEFAULT_SUITS);
-  const [activeSuitId, setActiveSuitId] = useState<string>(DEFAULT_SUITS[0].id);
-
-  const activeSuit = suits.find(s => s.id === activeSuitId) || suits[0];
-
-  const handlePrint = () => {
-    window.print();
-  };
-
-  const addSuit = () => {
-    if (suits.length >= 4) return;
-    const newSuit: Suit = { id: Math.random().toString(), name: "新花色", symbol: "🌟", cards: generateStandardCards() };
-    setSuits([...suits, newSuit]);
-    setActiveSuitId(newSuit.id);
-  };
-
-  const updateSuit = (id: string, updates: Partial<Suit>) => {
-    setSuits(suits.map(s => s.id === id ? { ...s, ...updates } : s));
-  };
-
-  const deleteSuit = (id: string) => {
-    if (suits.length <= 1) return;
-    const newSuits = suits.filter(s => s.id !== id);
-    setSuits(newSuits);
-    if (activeSuitId === id) setActiveSuitId(newSuits[0].id);
-  };
-
-  const updateCard = (suitId: string, cardId: string, updates: Partial<Card>) => {
-    setSuits(suits.map(s => s.id === suitId ? {
-      ...s,
-      cards: s.cards.map(c => c.id === cardId ? { ...c, ...updates } : c)
-    } : s));
+// ─── Card preview ─────────────────────────────────────────────────────────────
+function CardPreview({ card, suit, theme }: { card: Card; suit: Suit; theme: CardTheme }) {
+  const t = CARD_THEMES[theme];
+  const red = isRedSuit(suit.symbol);
+  const cardStyle: React.CSSProperties = {
+    background: t.bg,
+    border: `${t.borderWidth} solid ${t.border}`,
+    borderRadius: t.radius,
+    color: t.text,
   };
 
   return (
-    <div className="flex-1 bg-secondary/10 flex flex-col md:flex-row h-full overflow-hidden">
-      {/* Left Panel - Suits Configuration */}
-      <div className="w-full md:w-80 bg-white border-r flex flex-col h-full no-print z-10 shrink-0 shadow-sm">
-        <div className="p-4 border-b flex items-center justify-between">
-          <h2 className="font-serif font-bold text-lg">花色設定</h2>
-          <Button size="sm" variant="ghost" onClick={addSuit} disabled={suits.length >= 4} data-testid="btn-add-suit">
-            <Plus className="w-4 h-4 mr-1" /> 新增
+    <div
+      className="print-card relative select-none overflow-hidden"
+      style={{ width: "63mm", height: "88mm", ...cardStyle }}
+      data-testid={`card-preview-${card.id}`}
+    >
+      {/* Top-left corner */}
+      <div className="absolute top-1.5 left-2 flex flex-col items-center leading-none">
+        <span className="text-sm font-black">{card.value}</span>
+        <span className="text-xs" style={{ color: red ? "#dc2626" : t.accent }}>{suit.symbol}</span>
+      </div>
+      {/* Top-right corner (flipped) */}
+      <div className="absolute top-1.5 right-2 flex flex-col items-center leading-none rotate-180">
+        <span className="text-sm font-black">{card.value}</span>
+        <span className="text-xs" style={{ color: red ? "#dc2626" : t.accent }}>{suit.symbol}</span>
+      </div>
+
+      {/* Center */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        {card.imageBase64 ? (
+          <img src={card.imageBase64} alt="card art" className="max-w-[80%] max-h-[60%] object-contain" />
+        ) : card.description ? (
+          <p className="text-xs text-center px-4 leading-relaxed opacity-80">{card.description}</p>
+        ) : (
+          <span className="text-5xl" style={{ color: red ? "#dc2626" : t.accent, opacity: 0.25 }}>{suit.symbol}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Designer ────────────────────────────────────────────────────────────
+export default function CardDesigner() {
+  const [suits,         setSuits]         = useLocalStorage<Suit[]>("card-workshop-suits",       DEFAULT_SUITS);
+  const [activeSuitId,  setActiveSuitId]  = useLocalStorage<string>("card-workshop-active-suit", DEFAULT_SUITS[0].id);
+  const [cardTheme,     setCardTheme]     = useLocalStorage<CardTheme>("card-workshop-card-theme", "classic");
+  const [printSize,     setPrintSize]     = useLocalStorage<PrintSize>("card-workshop-print-size", "poker");
+  const [editingCard,   setEditingCard]   = useState<Card | null>(null);
+  const [editingSuitId, setEditingSuitId] = useState<string>("");
+  const [uploading,     setUploading]     = useState(false);
+  const importRef = useRef<HTMLInputElement>(null);
+
+  // Apply CSS variables for print size
+  useEffect(() => {
+    const s = PRINT_SIZES[printSize];
+    document.documentElement.style.setProperty("--card-print-width",  s.width);
+    document.documentElement.style.setProperty("--card-print-height", s.height);
+  }, [printSize]);
+
+  const activeSuit = suits.find((s) => s.id === activeSuitId) ?? suits[0];
+
+  // DnD sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setSuits((items) =>
+        arrayMove(items, items.findIndex((s) => s.id === active.id), items.findIndex((s) => s.id === over.id))
+      );
+    }
+  };
+
+  // Suit helpers
+  const updateSuit  = (id: string, change: Partial<Suit>) => setSuits(suits.map((s) => (s.id === id ? { ...s, ...change } : s)));
+  const deleteSuit  = (id: string) => {
+    const next = suits.filter((s) => s.id !== id);
+    setSuits(next);
+    if (activeSuitId === id) setActiveSuitId(next[0]?.id ?? "");
+  };
+  const addSuit = () => {
+    if (suits.length >= 4) return;
+    const id = crypto.randomUUID();
+    setSuits([...suits, { id, name: "新花色", symbol: "★", cards: genCards(STD) }]);
+    setActiveSuitId(id);
+  };
+
+  // Card helpers
+  const updateCard = (suitId: string, cardId: string, change: Partial<Card>) =>
+    setSuits(suits.map((s) => s.id === suitId
+      ? { ...s, cards: s.cards.map((c) => (c.id === cardId ? { ...c, ...change } : c)) }
+      : s));
+  const addCard    = (suitId: string) => {
+    setSuits(suits.map((s) => s.id === suitId
+      ? { ...s, cards: [...s.cards, { id: crypto.randomUUID(), value: `卡${s.cards.length + 1}`, description: "" }] }
+      : s));
+  };
+  const removeCard = (suitId: string) => {
+    setSuits(suits.map((s) => s.id === suitId && s.cards.length > 1 ? { ...s, cards: s.cards.slice(0, -1) } : s));
+  };
+
+  // Template apply
+  const applyTemplate = (key: string) => {
+    const tpl = CARD_TEMPLATES[key];
+    if (!tpl) return;
+    if (confirm(`套用「${tpl.name}」將覆蓋目前設計，確定嗎？`)) {
+      const newSuits = tpl.suits.map((s) => ({ ...s, cards: s.cards.map((c) => ({ ...c, id: crypto.randomUUID() })) }));
+      setSuits(newSuits);
+      setActiveSuitId(newSuits[0].id);
+    }
+  };
+
+  // JSON Export / Import
+  const handleExport = () => {
+    const blob = new Blob(
+      [JSON.stringify({ version: "1.0", type: "cards", exportedAt: new Date().toISOString(), data: { suits } }, null, 2)],
+      { type: "application/json" }
+    );
+    const url = URL.createObjectURL(blob);
+    const a   = Object.assign(document.createElement("a"), { href: url, download: `卡牌工坊-卡牌-${Date.now()}.json` });
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target?.result as string);
+        if (parsed.type !== "cards" || !Array.isArray(parsed.data?.suits)) throw new Error();
+        if (confirm("確定要載入此設計？目前的卡牌將被覆蓋。")) {
+          setSuits(parsed.data.suits);
+          setActiveSuitId(parsed.data.suits[0]?.id ?? "");
+        }
+      } catch { alert("❌ 檔案格式錯誤，請確認是卡牌工坊匯出的卡牌檔案。"); }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  // Image upload
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editingCard) return;
+    setUploading(true);
+    try {
+      const compressed = await imageCompression(file, { maxSizeMB: 0.15, maxWidthOrHeight: 350, useWebWorker: true });
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const base64 = ev.target?.result as string;
+        updateCard(editingSuitId, editingCard.id, { imageBase64: base64 });
+        setEditingCard({ ...editingCard, imageBase64: base64 });
+      };
+      reader.readAsDataURL(compressed);
+    } catch { alert("圖片處理失敗，請嘗試更小的圖片。"); }
+    finally { setUploading(false); e.target.value = ""; }
+  };
+
+  // ─── Render ───────────────────────────────────────────────────────────────
+  return (
+    <div className="flex-1 flex flex-col md:flex-row">
+      {/* LEFT: Suit panel */}
+      <div className="w-full md:w-72 bg-white border-b md:border-b-0 md:border-r flex flex-col no-print">
+        {/* Template selector */}
+        <div className="p-3 border-b">
+          <label className="text-xs text-muted-foreground mb-1 block">快速套用模板</label>
+          <Select onValueChange={applyTemplate}>
+            <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="選擇模板..." /></SelectTrigger>
+            <SelectContent>
+              {Object.entries(CARD_TEMPLATES).map(([k, t]) => (
+                <SelectItem key={k} value={k}>{t.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Visual theme */}
+        <div className="p-3 border-b">
+          <label className="text-xs text-muted-foreground mb-1 block">卡牌視覺主題</label>
+          <Select value={cardTheme} onValueChange={(v) => setCardTheme(v as CardTheme)}>
+            <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {(Object.keys(CARD_THEMES) as CardTheme[]).map((k) => (
+                <SelectItem key={k} value={k}>{CARD_THEMES[k].name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Print size */}
+        <div className="p-3 border-b">
+          <label className="text-xs text-muted-foreground mb-1 block">列印尺寸</label>
+          <Select value={printSize} onValueChange={(v) => setPrintSize(v as PrintSize)}>
+            <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {(Object.keys(PRINT_SIZES) as PrintSize[]).map((k) => (
+                <SelectItem key={k} value={k}>{PRINT_SIZES[k].label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Suit list with DnD */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={suits.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+              {suits.map((suit) => (
+                <SortableSuit
+                  key={suit.id}
+                  suit={suit}
+                  isActive={suit.id === activeSuitId}
+                  onSelect={() => setActiveSuitId(suit.id)}
+                  onUpdate={(change) => updateSuit(suit.id, change)}
+                  onDelete={() => deleteSuit(suit.id)}
+                  canDelete={suits.length > 1}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
+        </div>
+
+        {/* Add suit */}
+        {suits.length < 4 && (
+          <div className="p-3 border-t">
+            <Button variant="outline" size="sm" className="w-full" onClick={addSuit}>
+              <Plus className="w-4 h-4 mr-1" /> 新增花色
+            </Button>
+          </div>
+        )}
+
+        {/* Card count controls */}
+        <div className="p-3 border-t flex gap-2">
+          <Button size="sm" variant="outline" className="flex-1" onClick={() => addCard(activeSuit?.id ?? "")}>
+            <Plus className="w-3 h-3 mr-1" /> 新增卡牌
           </Button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {suits.map(suit => (
-            <div
-              key={suit.id}
-              className={`p-3 rounded-xl border-2 transition-all cursor-pointer ${activeSuitId === suit.id ? 'border-primary bg-primary/5' : 'border-transparent hover:border-border bg-muted/50'}`}
-              onClick={() => setActiveSuitId(suit.id)}
-              data-testid={`suit-item-${suit.id}`}
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <Input
-                  value={suit.symbol}
-                  onChange={e => updateSuit(suit.id, { symbol: e.target.value })}
-                  className="w-12 h-10 text-center text-xl p-0 font-serif"
-                  maxLength={2}
-                  data-testid={`input-suit-symbol-${suit.id}`}
-                />
-                <Input
-                  value={suit.name}
-                  onChange={e => updateSuit(suit.id, { name: e.target.value })}
-                  className="flex-1 h-10"
-                  data-testid={`input-suit-name-${suit.id}`}
-                />
-                <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); deleteSuit(suit.id); }} disabled={suits.length <= 1} data-testid={`btn-delete-suit-${suit.id}`}>
-                  <Trash2 className="w-4 h-4 text-muted-foreground hover:text-destructive" />
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="p-4 border-t text-xs text-muted-foreground">
-          列印時將輸出全部花色的卡牌
+          <Button size="sm" variant="outline" onClick={() => removeCard(activeSuit?.id ?? "")}
+            disabled={!activeSuit || activeSuit.cards.length <= 1}>
+            <Trash2 className="w-3 h-3 mr-1" /> 移除最後
+          </Button>
         </div>
       </div>
 
-      {/* Right Panel - Cards Grid (screen: active suit; print: all suits) */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden bg-gray-100">
-        <div className="no-print bg-white border-b px-6 py-4 flex items-center justify-between shadow-sm z-10">
-          <div>
-            <h1 className="text-2xl font-serif font-bold text-foreground flex items-center gap-2">
-              <span className={isRedSuit(activeSuit.symbol) ? "text-red-500" : "text-black"}>{activeSuit.symbol}</span>
-              {activeSuit.name} 卡牌
-            </h1>
-            <p className="text-sm text-muted-foreground">點擊卡牌編輯內容 — 列印時輸出全部花色</p>
+      {/* RIGHT: Card grid */}
+      <div className="flex-1 flex flex-col bg-secondary/10">
+        {/* Toolbar */}
+        <div className="no-print bg-white border-b px-4 py-3 flex flex-wrap items-center gap-2">
+          <div className="flex-1">
+            <h1 className="text-xl font-serif font-bold">卡牌設計工具</h1>
+            <p className="text-xs text-muted-foreground">點擊卡牌編輯內容</p>
           </div>
-          <Button onClick={handlePrint} data-testid="btn-print-cards" className="shadow-sm">
-            <Printer className="w-4 h-4 mr-2" /> 列印成 PDF
+          <Button variant="outline" size="sm" onClick={handleExport}>
+            <Download className="w-4 h-4 mr-1" /> 匯出
+          </Button>
+          <label>
+            <Button variant="outline" size="sm" asChild>
+              <span><Upload className="w-4 h-4 mr-1" /> 匯入</span>
+            </Button>
+            <input ref={importRef} type="file" accept=".json" className="hidden" onChange={handleImport} />
+          </label>
+          <Button size="sm" onClick={() => window.print()}>
+            <Printer className="w-4 h-4 mr-1" /> 列印
           </Button>
         </div>
 
-        {/* Screen view: active suit cards with edit dialogs */}
-        <div className="no-print flex-1 overflow-auto p-8">
-          <div className="max-w-5xl mx-auto">
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
-              {activeSuit.cards.map((card) => (
-                <Dialog key={card.id}>
-                  <DialogTrigger asChild>
-                    <div className="cursor-pointer">
-                      <CardPreview card={card} suit={activeSuit} />
-                    </div>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>編輯卡牌</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4 pt-4">
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">數值 / 標題</label>
-                        <Input
-                          value={card.value}
-                          onChange={e => updateCard(activeSuit.id, card.id, { value: e.target.value })}
-                          data-testid={`input-card-value-${card.id}`}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">描述文字 (選填)</label>
-                        <Textarea
-                          value={card.description}
-                          onChange={e => updateCard(activeSuit.id, card.id, { description: e.target.value })}
-                          rows={4}
-                          placeholder="輸入卡牌效果或描述..."
-                          data-testid={`input-card-desc-${card.id}`}
-                        />
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              ))}
-            </div>
-          </div>
+        {/* Cards grid */}
+        <div className="flex-1 overflow-auto p-4">
+          {activeSuit && (
+            <>
+              <h2 className="font-serif font-bold text-lg mb-4 no-print">
+                {activeSuit.symbol} {activeSuit.name}
+                <span className="text-sm font-normal text-muted-foreground ml-2">（{activeSuit.cards.length} 張）</span>
+              </h2>
+              <div className="flex flex-wrap gap-3">
+                {activeSuit.cards.map((card) => (
+                  <button
+                    key={card.id}
+                    className="no-print hover:scale-105 transition-transform"
+                    onClick={() => { setEditingCard(card); setEditingSuitId(activeSuit.id); }}
+                  >
+                    <CardPreview card={card} suit={activeSuit} theme={cardTheme} />
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
-        {/* Print-only view: ALL suits' cards in one grid with fixed physical dimensions */}
-        <div className="print-cards-container hidden print:block">
-          {suits.map(suit => (
+        {/* Print layout (hidden on screen) */}
+        <div className="print-only">
+          {suits.map((suit) => (
             <div key={suit.id} className="print-suit-section">
-              <div className="print-suit-label">{suit.symbol} {suit.name}</div>
-              <div className="print-grid">
-                {suit.cards.map(card => (
-                  <CardPreview key={card.id} card={card} suit={suit} editable={false} />
+              <div className="flex flex-wrap">
+                {suit.cards.map((card) => (
+                  <div key={card.id} className="p-1">
+                    <CardPreview card={card} suit={suit} theme={cardTheme} />
+                  </div>
                 ))}
               </div>
             </div>
           ))}
         </div>
       </div>
+
+      {/* Edit Dialog */}
+      {editingCard && (
+        <Dialog open onOpenChange={(open) => { if (!open) setEditingCard(null); }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="font-serif">編輯卡牌</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">數值 / 標題</label>
+                <Input
+                  value={editingCard.value}
+                  onChange={(e) => {
+                    const c = { ...editingCard, value: e.target.value };
+                    setEditingCard(c);
+                    updateCard(editingSuitId, editingCard.id, { value: e.target.value });
+                  }}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">描述文字（中央顯示）</label>
+                <Textarea
+                  rows={4}
+                  value={editingCard.description}
+                  onChange={(e) => {
+                    const c = { ...editingCard, description: e.target.value };
+                    setEditingCard(c);
+                    updateCard(editingSuitId, editingCard.id, { description: e.target.value });
+                  }}
+                  placeholder="輸入卡牌說明文字（選填）"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">卡牌插圖</label>
+                {editingCard.imageBase64 && (
+                  <div className="mb-2 relative">
+                    <img src={editingCard.imageBase64} alt="插圖" className="w-24 h-32 object-contain rounded border mx-auto block" />
+                    <Button
+                      variant="ghost" size="sm" className="mt-1 text-destructive w-full"
+                      onClick={() => {
+                        updateCard(editingSuitId, editingCard.id, { imageBase64: undefined });
+                        setEditingCard({ ...editingCard, imageBase64: undefined });
+                      }}
+                    >
+                      <Trash2 className="w-3 h-3 mr-1" /> 移除圖片
+                    </Button>
+                  </div>
+                )}
+                <label className="cursor-pointer">
+                  <Button variant="outline" size="sm" className="w-full" asChild disabled={uploading}>
+                    <span>{uploading ? "壓縮中…" : "📷 上傳圖片"}</span>
+                  </Button>
+                  <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={uploading} />
+                </label>
+                <p className="text-xs text-muted-foreground mt-1">自動壓縮至 150KB，建議使用方形圖片。若有描述文字，圖片優先顯示。</p>
+              </div>
+              <div className="pt-2">
+                <p className="text-xs text-muted-foreground">預覽（目前主題：{CARD_THEMES[cardTheme].name}）</p>
+                <div className="mt-2 flex justify-center">
+                  <div className="scale-75 origin-top">
+                    <CardPreview card={editingCard} suit={activeSuit ?? suits[0]} theme={cardTheme} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
