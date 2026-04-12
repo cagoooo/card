@@ -8,11 +8,19 @@ import BoardDesigner from "@/pages/board";
 import CardDesigner from "@/pages/cards";
 import CardBackDesigner from "@/pages/card-back";
 import Projects from "@/pages/projects";
+import { PrintLayout } from "@/pages/print-layout";
 import { Layout } from "@/components/layout";
+import { useLocation } from "wouter";
 
 const queryClient = new QueryClient();
 
 function Router() {
+  const [location] = useLocation();
+
+  if (location === "/cards/print") {
+    return <PrintLayout />;
+  }
+
   return (
     <Layout>
       <Switch>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useLocation } from "wouter";
 import { Printer, Plus, Trash2, Download, Upload, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,9 +68,9 @@ function isRedSuit(symbol: string) { return ["♥","♦","❤️","🔴"].includ
 
 // ─── Sortable suit item ───────────────────────────────────────────────────────
 function SortableSuit({
-  suit, isActive, onSelect, onUpdate, onDelete, canDelete,
+  suit, isActive, isStudent, onSelect, onUpdate, onDelete, canDelete,
 }: {
-  suit: Suit; isActive: boolean;
+  suit: Suit; isActive: boolean; isStudent: boolean;
   onSelect: () => void;
   onUpdate: (change: Partial<Suit>) => void;
   onDelete: () => void;
@@ -87,23 +88,27 @@ function SortableSuit({
       onClick={onSelect}
     >
       <div className="flex items-center gap-2 mb-2">
-        <div {...listeners} className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground" onClick={(e) => e.stopPropagation()}>
-          <GripVertical className="w-4 h-4" />
-        </div>
+        {!isStudent && (
+          <div {...listeners} className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground" onClick={(e) => e.stopPropagation()}>
+            <GripVertical className="w-4 h-4" />
+          </div>
+        )}
         <Input
           value={suit.symbol}
           maxLength={2}
+          readOnly={isStudent}
           className="w-12 text-center font-bold text-lg p-1 h-8"
           onClick={(e) => e.stopPropagation()}
           onChange={(e) => onUpdate({ symbol: e.target.value })}
         />
         <Input
           value={suit.name}
+          readOnly={isStudent}
           className="flex-1 h-8 text-sm"
           onClick={(e) => e.stopPropagation()}
           onChange={(e) => onUpdate({ name: e.target.value })}
         />
-        {canDelete && (
+        {!isStudent && canDelete && (
           <Button
             variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
@@ -169,6 +174,10 @@ export default function CardDesigner() {
   const [editingSuitId, setEditingSuitId] = useState<string>("");
   const [uploading,     setUploading]     = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
+  
+  const [, setLocation] = useLocation();
+  const searchParams = new URLSearchParams(window.location.search);
+  const isStudent = searchParams.get("mode") === "student";
 
   // Apply CSS variables for print size
   useEffect(() => {
@@ -287,43 +296,47 @@ export default function CardDesigner() {
       {/* LEFT: Suit panel */}
       <div className="w-full md:w-72 bg-white border-b md:border-b-0 md:border-r flex flex-col no-print">
         {/* Template selector */}
-        <div className="p-3 border-b">
-          <label className="text-xs text-muted-foreground mb-1 block">快速套用模板</label>
-          <Select onValueChange={applyTemplate}>
-            <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="選擇模板..." /></SelectTrigger>
-            <SelectContent>
-              {Object.entries(CARD_TEMPLATES).map(([k, t]) => (
-                <SelectItem key={k} value={k}>{t.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {!isStudent && (
+          <>
+            <div className="p-3 border-b">
+              <label className="text-xs text-muted-foreground mb-1 block">快速套用模板</label>
+              <Select onValueChange={applyTemplate}>
+                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="選擇模板..." /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(CARD_TEMPLATES).map(([k, t]) => (
+                    <SelectItem key={k} value={k}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-        {/* Visual theme */}
-        <div className="p-3 border-b">
-          <label className="text-xs text-muted-foreground mb-1 block">卡牌視覺主題</label>
-          <Select value={cardTheme} onValueChange={(v) => setCardTheme(v as CardTheme)}>
-            <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {(Object.keys(CARD_THEMES) as CardTheme[]).map((k) => (
-                <SelectItem key={k} value={k}>{CARD_THEMES[k].name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+            {/* Visual theme */}
+            <div className="p-3 border-b">
+              <label className="text-xs text-muted-foreground mb-1 block">卡牌視覺主題</label>
+              <Select value={cardTheme} onValueChange={(v) => setCardTheme(v as CardTheme)}>
+                <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(CARD_THEMES) as CardTheme[]).map((k) => (
+                    <SelectItem key={k} value={k}>{CARD_THEMES[k].name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-        {/* Print size */}
-        <div className="p-3 border-b">
-          <label className="text-xs text-muted-foreground mb-1 block">列印尺寸</label>
-          <Select value={printSize} onValueChange={(v) => setPrintSize(v as PrintSize)}>
-            <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {(Object.keys(PRINT_SIZES) as PrintSize[]).map((k) => (
-                <SelectItem key={k} value={k}>{PRINT_SIZES[k].label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+            {/* Print size */}
+            <div className="p-3 border-b">
+              <label className="text-xs text-muted-foreground mb-1 block">列印尺寸</label>
+              <Select value={printSize} onValueChange={(v) => setPrintSize(v as PrintSize)}>
+                <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(PRINT_SIZES) as PrintSize[]).map((k) => (
+                    <SelectItem key={k} value={k}>{PRINT_SIZES[k].label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </>
+        )}
 
         {/* Suit list with DnD */}
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
@@ -334,6 +347,7 @@ export default function CardDesigner() {
                   key={suit.id}
                   suit={suit}
                   isActive={suit.id === activeSuitId}
+                  isStudent={isStudent}
                   onSelect={() => setActiveSuitId(suit.id)}
                   onUpdate={(change) => updateSuit(suit.id, change)}
                   onDelete={() => deleteSuit(suit.id)}
@@ -345,7 +359,7 @@ export default function CardDesigner() {
         </div>
 
         {/* Add suit */}
-        {suits.length < 4 && (
+        {!isStudent && suits.length < 4 && (
           <div className="p-3 border-t">
             <Button variant="outline" size="sm" className="w-full" onClick={addSuit}>
               <Plus className="w-4 h-4 mr-1" /> 新增花色
@@ -354,15 +368,17 @@ export default function CardDesigner() {
         )}
 
         {/* Card count controls */}
-        <div className="p-3 border-t flex gap-2">
-          <Button size="sm" variant="outline" className="flex-1" onClick={() => addCard(activeSuit?.id ?? "")}>
-            <Plus className="w-3 h-3 mr-1" /> 新增卡牌
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => removeCard(activeSuit?.id ?? "")}
-            disabled={!activeSuit || activeSuit.cards.length <= 1}>
-            <Trash2 className="w-3 h-3 mr-1" /> 移除最後
-          </Button>
-        </div>
+        {!isStudent && (
+          <div className="p-3 border-t flex gap-2">
+            <Button size="sm" variant="outline" className="flex-1" onClick={() => addCard(activeSuit?.id ?? "")}>
+              <Plus className="w-3 h-3 mr-1" /> 新增卡牌
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => removeCard(activeSuit?.id ?? "")}
+              disabled={!activeSuit || activeSuit.cards.length <= 1}>
+              <Trash2 className="w-3 h-3 mr-1" /> 移除最後
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* RIGHT: Card grid */}
@@ -382,8 +398,8 @@ export default function CardDesigner() {
             </Button>
             <input ref={importRef} type="file" accept=".json" className="hidden" onChange={handleImport} />
           </label>
-          <Button size="sm" onClick={() => window.print()}>
-            <Printer className="w-4 h-4 mr-1" /> 列印
+          <Button size="sm" onClick={() => setLocation("/cards/print")}>
+            <Printer className="w-4 h-4 mr-1" /> 進階列印排版 (A4)
           </Button>
         </div>
 

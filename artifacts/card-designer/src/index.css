@@ -230,3 +230,58 @@
     padding-bottom: 2mm;
   }
 }
+
+/* --- Phase 4: A4/A3 實體排版列印系統樣式 --- */
+
+@page {
+  /* 將瀏覽器預設頁邊界歸零，交由 .print-sheet 完美控制 */
+  margin: 0;
+  size: A4 portrait;
+}
+
+.print-sheet {
+  background-color: white;
+  margin: 0 auto;
+  position: relative;
+  page-break-after: always;
+  break-after: page;
+  overflow: hidden;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+}
+
+.print-sheet.size-a4 {
+  width: 210mm;
+  height: 297mm;
+}
+
+.print-sheet.size-a3 {
+  width: 297mm;
+  height: 420mm;
+}
+
+/* 顯示與列印時，避免切邊 */
+@media print {
+  body {
+    background-color: white !important;
+  }
+  .print-sheet {
+    box-shadow: none; /* 列印時不需要陰影 */
+  }
+  /* 隱藏不必要的無用留白 */
+  #root, .print-sheet-container {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+}
+
+/* 精準的卡牌裁切線 (Crop mark) 跨越邊界設計 (外擴5mm十字形) */
+.crop-mark-tl, .crop-mark-tr, .crop-mark-bl, .crop-mark-br {
+  position: absolute;
+  width: 4mm;
+  height: 4mm;
+  pointer-events: none;
+}
+.crop-mark-tl { top: -4mm; left: -4mm; border-right: 0.5px solid #000; border-bottom: 0.5px solid #000; }
+.crop-mark-tr { top: -4mm; right: -4mm; border-left: 0.5px solid #000; border-bottom: 0.5px solid #000; }
+.crop-mark-bl { bottom: -4mm; left: -4mm; border-right: 0.5px solid #000; border-top: 0.5px solid #000; }
+.crop-mark-br { bottom: -4mm; right: -4mm; border-left: 0.5px solid #000; border-top: 0.5px solid #000; }

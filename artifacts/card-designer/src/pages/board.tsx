@@ -69,6 +69,9 @@ export default function BoardDesigner() {
   const [scale,     setScale]     = useState(1);
   const importRef = useRef<HTMLInputElement>(null);
 
+  const searchParams = new URLSearchParams(window.location.search);
+  const isStudent = searchParams.get("mode") === "student";
+
   const updateSquare = (id: number, updates: Partial<Square>) =>
     setSquares(squares.map((sq) => (sq.id === id ? { ...sq, ...updates } : sq)));
 
@@ -133,13 +136,14 @@ export default function BoardDesigner() {
   const leftCol   = squares.slice(C3 + 1);
 
   // ─── Square cell component ────────────────────────────────────────────────
-  const SquareCell = ({ sq, className = "" }: { sq: Square; className?: string }) => (
-    <Popover>
-      <PopoverTrigger asChild>
-        <div
-          data-testid={`square-${sq.id}`}
-          className={`border border-black flex flex-col items-center justify-center text-center p-1 cursor-pointer hover:bg-black/5 transition-colors relative bg-white ${className}`}
-        >
+  const SquareCell = ({ sq, className = "" }: { sq: Square; className?: string }) => {
+    const content = (
+      <div
+        data-testid={`square-${sq.id}`}
+        className={`border border-black flex flex-col items-center justify-center text-center p-1 relative bg-white ${
+          isStudent ? "cursor-default" : "cursor-pointer hover:bg-black/5 transition-colors"
+        } ${className}`}
+      >
           {sq.type === "property" && (
             <div className="absolute top-0 left-0 right-0 h-4 md:h-6 border-b border-black" style={{ backgroundColor: sq.color }} />
           )}
@@ -153,8 +157,16 @@ export default function BoardDesigner() {
             {sq.icon && <span className="text-base leading-none">{sq.icon}</span>}
             <span className="text-[9px] md:text-[11px] font-bold break-all">{sq.name}</span>
           </div>
-        </div>
-      </PopoverTrigger>
+      </div>
+    );
+
+    if (isStudent) return content;
+
+    return (
+      <Popover>
+        <PopoverTrigger asChild>
+          {content}
+        </PopoverTrigger>
 
       <PopoverContent className="w-72 z-[100] no-print" data-testid={`popover-square-${sq.id}`}>
         <div className="space-y-4">
@@ -214,6 +226,7 @@ export default function BoardDesigner() {
       </PopoverContent>
     </Popover>
   );
+};
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
@@ -226,14 +239,16 @@ export default function BoardDesigner() {
         </div>
 
         {/* Grid size selector */}
-        <Select value={String(boardSize)} onValueChange={handleChangeBoardSize}>
-          <SelectTrigger className="w-28 h-9 text-sm"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {BOARD_SIZES.map((s) => (
-              <SelectItem key={s} value={String(s)}>{s} 格圖板</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {!isStudent && (
+          <Select value={String(boardSize)} onValueChange={handleChangeBoardSize}>
+            <SelectTrigger className="w-28 h-9 text-sm"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {BOARD_SIZES.map((s) => (
+                <SelectItem key={s} value={String(s)}>{s} 格圖板</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
         {/* Zoom controls */}
         <div className="flex items-center gap-0.5 border rounded-md px-1.5 py-0.5">
@@ -253,18 +268,22 @@ export default function BoardDesigner() {
         </div>
 
         {/* Action buttons */}
-        <Button variant="outline" size="sm" onClick={handleExport}>
-          <Download className="w-4 h-4 mr-1" /> 匯出
-        </Button>
-        <label>
-          <Button variant="outline" size="sm" asChild>
-            <span><Upload className="w-4 h-4 mr-1" /> 匯入</span>
-          </Button>
-          <input ref={importRef} type="file" accept=".json" className="hidden" onChange={handleImport} />
-        </label>
-        <Button variant="outline" size="sm" onClick={handleReset} data-testid="btn-reset-board">
-          <RotateCcw className="w-4 h-4 mr-1" /> 重設
-        </Button>
+        {!isStudent && (
+          <>
+            <Button variant="outline" size="sm" onClick={handleExport}>
+              <Download className="w-4 h-4 mr-1" /> 匯出
+            </Button>
+            <label>
+              <Button variant="outline" size="sm" asChild>
+                <span><Upload className="w-4 h-4 mr-1" /> 匯入</span>
+              </Button>
+              <input ref={importRef} type="file" accept=".json" className="hidden" onChange={handleImport} />
+            </label>
+            <Button variant="outline" size="sm" onClick={handleReset} data-testid="btn-reset-board">
+              <RotateCcw className="w-4 h-4 mr-1" /> 重設
+            </Button>
+          </>
+        )}
         <Button size="sm" onClick={() => window.print()} data-testid="btn-print-board">
           <Printer className="w-4 h-4 mr-1" /> 列印
         </Button>
