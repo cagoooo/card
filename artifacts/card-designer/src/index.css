@@ -191,8 +191,22 @@
   }
   .print-cards-container {
     width: 210mm; /* A4 Portrait */
-    padding: 10mm;
+    padding: 8mm;
     margin: 0 auto;
-    page-break-after: always;
+  }
+  /* Fixed poker card size: 63mm x 88mm (standard poker size) */
+  .print-cards-container .print-card {
+    width: 63mm !important;
+    height: 88mm !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    flex-shrink: 0;
+    flex-grow: 0;
+  }
+  .print-cards-container .print-grid {
+    display: flex !important;
+    flex-wrap: wrap;
+    gap: 4mm;
+    justify-content: flex-start;
   }
 }

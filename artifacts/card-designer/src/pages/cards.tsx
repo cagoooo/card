@@ -125,13 +125,13 @@ export default function CardDesigner() {
 
         <div className="flex-1 overflow-auto p-8">
           <div className="max-w-5xl mx-auto print-cards-container">
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 print:grid-cols-3 print:gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 print-grid">
               {activeSuit.cards.map((card) => (
                 <Dialog key={card.id}>
                   <DialogTrigger asChild>
                     <div 
                       data-testid={`card-${card.id}`}
-                      className="aspect-[2.5/3.5] bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-xl transition-all cursor-pointer relative overflow-hidden group print:rounded-none print:border-gray-400"
+                      className="print-card aspect-[2.5/3.5] bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-xl transition-all cursor-pointer relative overflow-hidden group print:rounded-none print:border-gray-400"
                     >
                       {/* Crop marks for printing */}
                       <div className="hidden print:block absolute top-0 left-0 w-2 h-2 border-t border-l border-gray-400"></div>

@@ -81,6 +81,9 @@ export default function BoardDesigner() {
           {sq.type === "corner" && (
             <div className="absolute inset-0 opacity-50" style={{ backgroundColor: sq.color }} />
           )}
+          {sq.type === "special" && (
+            <div className="absolute top-0 left-0 right-0 h-4 md:h-6 border-b border-black" style={{ backgroundColor: sq.color }} />
+          )}
           <span className="text-[10px] md:text-xs font-bold z-10 leading-tight break-all">
             {sq.name}
           </span>
@@ -97,25 +100,23 @@ export default function BoardDesigner() {
               data-testid={`input-square-name-${sq.id}`}
             />
           </div>
-          {sq.type !== "special" && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium">顏色</label>
-              <div className="flex gap-2">
-                <input 
-                  type="color" 
-                  value={sq.color}
-                  onChange={e => updateSquare(sq.id, { color: e.target.value })}
-                  className="w-10 h-10 p-1 rounded cursor-pointer"
-                  data-testid={`input-square-color-${sq.id}`}
-                />
-                <Input 
-                  value={sq.color} 
-                  onChange={e => updateSquare(sq.id, { color: e.target.value })}
-                  className="flex-1 uppercase font-mono"
-                />
-              </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">顏色</label>
+            <div className="flex gap-2">
+              <input 
+                type="color" 
+                value={sq.color}
+                onChange={e => updateSquare(sq.id, { color: e.target.value })}
+                className="w-10 h-10 p-1 rounded cursor-pointer"
+                data-testid={`input-square-color-${sq.id}`}
+              />
+              <Input 
+                value={sq.color} 
+                onChange={e => updateSquare(sq.id, { color: e.target.value })}
+                className="flex-1 uppercase font-mono"
+              />
             </div>
-          )}
+          </div>
         </div>
       </PopoverContent>
     </Popover>
