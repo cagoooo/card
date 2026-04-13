@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
-import { Printer, Plus, Trash2, Download, Upload, GripVertical } from "lucide-react";
+import { Printer, Plus, Trash2, Download, Upload, GripVertical, FileArchive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,7 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
-  type DragEndEvent,
+  DragOverlay, defaultDropAnimationSideEffects,
+  type DragEndEvent, type DragStartEvent,
 } from "@dnd-kit/core";
 import {
   arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable,
@@ -16,6 +17,9 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import imageCompression from "browser-image-compression";
+import html2canvas from "html2canvas";
+import JSZip from "jszip";
+import { motion, AnimatePresence } from "framer-motion";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { CARD_TEMPLATES } from "@/lib/card-templates";
 
@@ -173,11 +177,42 @@ export default function CardDesigner() {
   const [editingCard,   setEditingCard]   = useState<Card | null>(null);
   const [editingSuitId, setEditingSuitId] = useState<string>("");
   const [uploading,     setUploading]     = useState(false);
+  const [exportingZip,  setExportingZip]  = useState(false);
+  const [exportProgress,setExportProgress]= useState(0);
+  const [activeDragSuit,setActiveDragSuit]= useState<Suit | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
+  const exportContainerRef = useRef<HTMLDivElement>(null);
   
   const [, setLocation] = useLocation();
   const searchParams = new URLSearchParams(window.location.search);
   const isStudent = searchParams.get("mode") === "student";
+
+  // 全域快捷鍵
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 僅在沒有彈出框開啟，且不在輸入框內時才觸發快捷鍵
+      if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "TEXTAREA") {
+        return; // 不要攔截輸入框的事件
+      }
+      
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === "p") {
+          e.preventDefault();
+          setLocation("/cards/print");
+        } else if (e.key === "e") {
+          e.preventDefault();
+          // 觸發匯出圖檔
+          document.getElementById("btn-export-zip")?.click();
+        } else if (e.key === "s") {
+          e.preventDefault();
+          // 觸發匯出 JSON
+          document.getElementById("btn-export-json")?.click();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [setLocation]);
 
   // Apply CSS variables for print size
   useEffect(() => {
@@ -194,7 +229,13 @@ export default function CardDesigner() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
+  const handleDragStart = (e: DragStartEvent) => {
+    const suit = suits.find(s => s.id === e.active.id);
+    if (suit) setActiveDragSuit(suit);
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
+    setActiveDragSuit(null);
     const { active, over } = event;
     if (over && active.id !== over.id) {
       setSuits((items) =>
@@ -243,15 +284,63 @@ export default function CardDesigner() {
   };
 
   // JSON Export / Import
-  const handleExport = () => {
+  const handleExportJSON = () => {
     const blob = new Blob(
       [JSON.stringify({ version: "1.0", type: "cards", exportedAt: new Date().toISOString(), data: { suits } }, null, 2)],
       { type: "application/json" }
     );
     const url = URL.createObjectURL(blob);
-    const a   = Object.assign(document.createElement("a"), { href: url, download: `卡牌工坊-卡牌-${Date.now()}.json` });
+    const a   = Object.assign(document.createElement("a"), { href: url, download: `卡牌工坊設定-${Date.now()}.json` });
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  // ZIP Image Pack Export
+  const handleExportZip = async () => {
+    if (!exportContainerRef.current || suits.length === 0) return;
+    setExportingZip(true);
+    setExportProgress(1); // start at 1%
+    try {
+      const zip = new JSZip();
+      // 加入設定檔
+      zip.file("config.json", JSON.stringify({ version: "1.0", type: "cards", data: { suits } }, null, 2));
+
+      const printCards = exportContainerRef.current.querySelectorAll(".print-card");
+      let total = printCards.length;
+      let count = 0;
+
+      for (const node of Array.from(printCards)) {
+        const el = node as HTMLElement;
+        const filename = el.getAttribute("data-filename") || `card-${count}.png`;
+        
+        // 使用 high-dpi 擷取 (scale 3)
+        const canvas = await html2canvas(el, { 
+          scale: 3, 
+          useCORS: true, 
+          backgroundColor: null,
+          logging: false 
+        });
+        
+        const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/png"));
+        if (blob) zip.file(filename, blob);
+        
+        count++;
+        setExportProgress(Math.min(99, Math.round((count / total) * 100)));
+      }
+
+      const content = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(content);
+      const a = Object.assign(document.createElement("a"), { href: url, download: `卡牌圖片包-${Date.now()}.zip` });
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setExportProgress(100);
+    } catch {
+      alert("ZIP 匯出失敗，可能圖片含外站不允許存取資源。");
+    } finally {
+      setTimeout(() => { setExportingZip(false); setExportProgress(0); }, 1000);
+    }
   };
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -340,7 +429,7 @@ export default function CardDesigner() {
 
         {/* Suit list with DnD */}
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
             <SortableContext items={suits.map((s) => s.id)} strategy={verticalListSortingStrategy}>
               {suits.map((suit) => (
                 <SortableSuit
@@ -355,6 +444,23 @@ export default function CardDesigner() {
                 />
               ))}
             </SortableContext>
+            
+            {/* 拖曳時的陰影與立體感增強 */}
+            <DragOverlay dropAnimation={{ sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: "0.4" } } }) }}>
+              {activeDragSuit ? (
+                <div className="shadow-2xl shadow-primary/20 scale-[1.02] bg-white rounded-xl z-50 ring-2 ring-primary">
+                  <SortableSuit
+                    suit={activeDragSuit}
+                    isActive={true}
+                    isStudent={isStudent}
+                    onSelect={() => {}}
+                    onUpdate={() => {}}
+                    onDelete={() => {}}
+                    canDelete={false}
+                  />
+                </div>
+              ) : null}
+            </DragOverlay>
           </DndContext>
         </div>
 
@@ -389,9 +495,14 @@ export default function CardDesigner() {
             <h1 className="text-xl font-serif font-bold">卡牌設計工具</h1>
             <p className="text-xs text-muted-foreground">點擊卡牌編輯內容</p>
           </div>
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download className="w-4 h-4 mr-1" /> 匯出
+          <Button id="btn-export-json" variant="outline" size="sm" onClick={handleExportJSON}>
+            <Download className="w-4 h-4 mr-1" /> JSON
           </Button>
+          {!isStudent && (
+             <Button id="btn-export-zip" variant="outline" size="sm" onClick={handleExportZip} disabled={exportingZip}>
+               <FileArchive className="w-4 h-4 mr-1" /> {exportingZip ? `打包中... ${exportProgress}%` : "打包全套 (ZIP)"}
+             </Button>
+          )}
           <label>
             <Button variant="outline" size="sm" asChild>
               <span><Upload className="w-4 h-4 mr-1" /> 匯入</span>
@@ -404,26 +515,60 @@ export default function CardDesigner() {
         </div>
 
         {/* Cards grid */}
-        <div className="flex-1 overflow-auto p-4">
+        <div className="flex-1 overflow-auto p-4 z-0">
           {activeSuit && (
             <>
-              <h2 className="font-serif font-bold text-lg mb-4 no-print">
-                {activeSuit.symbol} {activeSuit.name}
-                <span className="text-sm font-normal text-muted-foreground ml-2">（{activeSuit.cards.length} 張）</span>
+              <h2 className="font-serif font-bold text-lg mb-4 no-print flex items-center justify-between">
+                <span>
+                  {activeSuit.symbol} {activeSuit.name}
+                  <span className="text-sm font-normal text-muted-foreground ml-2">（{activeSuit.cards.length} 張）</span>
+                </span>
               </h2>
-              <div className="flex flex-wrap gap-3">
-                {activeSuit.cards.map((card) => (
-                  <button
-                    key={card.id}
-                    className="no-print hover:scale-105 transition-transform"
-                    onClick={() => { setEditingCard(card); setEditingSuitId(activeSuit.id); }}
-                  >
-                    <CardPreview card={card} suit={activeSuit} theme={cardTheme} />
-                  </button>
-                ))}
-              </div>
+
+              {activeSuit.cards.length === 0 ? (
+                <div className="flex flex-col items-center justify-center p-12 mt-12 mb-12 text-center text-muted-foreground bg-white/50 border-2 border-dashed rounded-xl">
+                    <p className="mb-4">此花色目前沒有任何卡牌</p>
+                    {!isStudent && (
+                      <Button variant="outline" onClick={() => addCard(activeSuit.id)}>
+                         <Plus className="w-4 h-4 mr-2" /> 點此新增第一張
+                      </Button>
+                    )}
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-4 items-start">
+                  <AnimatePresence mode="popLayout">
+                    {activeSuit.cards.map((card) => (
+                      <motion.button
+                        layout
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.5 }}
+                        transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                        key={card.id}
+                        className="no-print hover:scale-105 hover:z-10 focus:outline-none transition-transform"
+                        onClick={() => { setEditingCard(card); setEditingSuitId(activeSuit.id); }}
+                      >
+                        <div className="shadow-sm hover:shadow-lg transition-shadow rounded-xl">
+                          <CardPreview card={card} suit={activeSuit} theme={cardTheme} />
+                        </div>
+                      </motion.button>
+                    ))}
+                  </AnimatePresence>
+                </div>
+              )}
             </>
           )}
+        </div>
+
+        {/* 隱藏的渲染區 (供應 ZIP 匯出截圖使用) */}
+        <div ref={exportContainerRef} className="fixed opacity-0 pointer-events-none -z-50 top-[200vh] left-[200vw] flex">
+           {suits.map((suit) =>
+             suit.cards.map((card, idx) => (
+               <div key={`export-${suit.id}-${card.id}`} data-filename={`${suit.name}-${idx + 1}-${card.value.replace(/[\/\\*?"<>|:]/g, "")}.png`}>
+                 <CardPreview card={card} suit={suit} theme={cardTheme} />
+               </div>
+             ))
+           )}
         </div>
 
         {/* Print layout (hidden on screen) */}
